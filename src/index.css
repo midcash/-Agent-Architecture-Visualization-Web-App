@@ -1,0 +1,51 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+:root {
+  --accent: #7c3aed;
+  --accent-bg: rgba(124, 58, 237, 0.1);
+  color-scheme: light dark;
+}
+
+.dark {
+  --accent: #a78bfa;
+  --accent-bg: rgba(167, 139, 250, 0.15);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* React Flow overrides */
+.react-flow__node {
+  cursor: grab;
+}
+
+.react-flow__node:active {
+  cursor: grabbing;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}

@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && npx oxlint --fix \"$CLAUDE_TOOL_INPUT_FILE_PATH\" 2>/dev/null || true",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && npx tsc -b --noEmit 2>&1 | tail -5",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && echo \"Branch: $(git branch --show-current 2>/dev/null || echo N/A) | Last commit: $(git log -1 --oneline 2>/dev/null || echo N/A)\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
