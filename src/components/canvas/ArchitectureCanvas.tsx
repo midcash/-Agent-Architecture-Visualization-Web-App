@@ -15,6 +15,9 @@ import BaseNode from './nodes/BaseNode'
 import DataFlowEdge from './edges/DataFlowEdge'
 import CanvasToolbar from './CanvasToolbar'
 import CanvasLegend from './CanvasLegend'
+import PlaybackControls from '../data-flow/PlaybackControls'
+import FlowTimeline from '../data-flow/FlowTimeline'
+import StepDetailPanel from '../data-flow/StepDetailPanel'
 
 // Stable references — defined outside component body
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,6 +112,11 @@ const ArchitectureCanvas: React.FC = () => {
 
       {/* Legend */}
       <CanvasLegend />
+
+      {/* Animation controls */}
+      <PlaybackControls />
+      <FlowTimeline />
+      <StepDetailPanel />
     </div>
   )
 }
