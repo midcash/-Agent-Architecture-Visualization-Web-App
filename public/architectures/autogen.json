@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "AutoGen",
+    "version": "0.7+",
+    "description": "Conversation-driven multi-agent framework built on the Actor model with async pub/sub messaging. Three-layer architecture with strict one-way dependencies: autogen-core → autogen-agentchat → autogen-ext.",
+    "url": "https://github.com/microsoft/autogen",
+    "pattern": "actor-model",
+    "category": "multi-agent"
+  },
+  "modules": [
+    { "id": "agent-runtime", "name": "Agent Runtime", "type": "core", "description": "Manages agent lifecycle and message routing. SingleThreadedAgentRuntime for local dev; gRPC-based distributed runtime for production." },
+    { "id": "routed-agent", "name": "RoutedAgent", "type": "compute", "description": "Base agent primitive built on Actor model — independent unit communicating via async message passing. Subclassed for specific roles." },
+    { "id": "pubsub-bus", "name": "Pub/Sub Bus", "type": "routing", "description": "Async messaging backbone. Agents publish messages to topics, subscribe handlers to topics — complete loose coupling between agents." },
+    { "id": "group-chat", "name": "GroupChat", "type": "core", "description": "Turn-based multi-agent conversation container with shared context. Supports RoundRobin, auto speaker selection, or custom selectors." },
+    { "id": "chat-manager", "name": "GroupChatManager", "type": "compute", "description": "Orchestrator: speaker selection, termination rules, message routing. Plugs custom selector functions for advanced coordination." },
+    { "id": "model-context", "name": "ModelContext", "type": "storage", "description": "ChatCompletionContext managing conversation history. Buffered variant keeps sliding window of recent messages for context window management." },
+    { "id": "topic-registry", "name": "Topic Registry", "type": "routing", "description": "Resolves agent subscriptions to pub/sub topics. Maps topic strings to agent handler registrations." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "agent-runtime", "to": "routed-agent", "label": "spawn agent", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "actor-spawn", "description": "Runtime instantiates agents, registers their topic subscriptions" } },
+    { "id": "f2", "from": "routed-agent", "to": "pubsub-bus", "label": "publish message", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "pub", "description": "Agent publishes typed message to a topic" } },
+    { "id": "f3", "from": "pubsub-bus", "to": "routed-agent", "label": "deliver message", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "sub", "description": "Bus delivers message to all agents subscribed to the topic" } },
+    { "id": "f4", "from": "group-chat", "to": "chat-manager", "label": "coordinate", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "coordination", "description": "GroupChat delegates speaker selection and termination to manager" } },
+    { "id": "f5", "from": "chat-manager", "to": "pubsub-bus", "label": "broadcast turn", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "broadcast", "description": "Manager broadcasts selected speaker's message to all group members" } },
+    { "id": "f6", "from": "topic-registry", "to": "pubsub-bus", "label": "resolve subscriptions", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "resolution", "description": "Registry tells bus which agents subscribe to which topics" } },
+    { "id": "f7", "from": "model-context", "to": "routed-agent", "label": "bind model", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "context-binding", "description": "Agent reads/writes conversation history via ModelContext" } },
+    { "id": "f8", "from": "routed-agent", "to": "topic-registry", "label": "register handler", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "subscription", "description": "Agent registers message handler for specific topic" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Agent Setup & Registration",
+        "description": "Runtime spawns agents; each registers topic subscriptions and binds model context",
+        "steps": [
+          { "moduleId": "agent-runtime", "action": "spawn", "description": "Runtime instantiates all RoutedAgents for the session", "isEntry": true },
+          { "moduleId": "routed-agent", "action": "register", "description": "Each agent registers message handlers with Topic Registry" },
+          { "moduleId": "model-context", "action": "bind", "description": "Each agent binds to a ModelContext for conversation history management" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Pub/Sub Conversation Loop",
+        "description": "Agents communicate via async pub/sub; GroupChatManager orchestrates turn-taking",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "routed-agent", "action": "receive", "trigger": "message on subscribed topic", "description": "Agent receives typed message via pub/sub delivery", "isEntry": true },
+          { "moduleId": "model-context", "action": "read", "description": "Agent loads conversation history from ModelContext" },
+          { "moduleId": "routed-agent", "action": "reason", "description": "Agent calls LLM with instructions + context, generates response or tool call" },
+          { "moduleId": "pubsub-bus", "action": "publish", "description": "Agent publishes response message to appropriate topic" },
+          { "moduleId": "chat-manager", "action": "select-speaker", "description": "Manager selects next speaker based on strategy and termination rules" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Termination",
+        "description": "GroupChatManager evaluates termination conditions and ends conversation",
+        "steps": [
+          { "moduleId": "chat-manager", "action": "evaluate", "description": "Manager checks termination conditions against conversation state", "isEntry": true },
+          { "moduleId": "agent-runtime", "action": "stop", "description": "Runtime stops all agents, collects final results" }
+        ]
+      }
+    ]
+  }
+}

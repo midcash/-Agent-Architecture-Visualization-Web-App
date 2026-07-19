@@ -1,0 +1,69 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "CrewAI",
+    "version": "0.100+",
+    "description": "Role-based multi-agent framework with event-driven flow orchestration. Two complementary pillars: Flows (decorator-driven @start/@listen/@router) + Crews (agent teams with sequential or hierarchical process).",
+    "url": "https://github.com/crewAIInc/crewAI",
+    "pattern": "role-based",
+    "category": "multi-agent"
+  },
+  "modules": [
+    { "id": "flow", "name": "Flow", "type": "core", "description": "Event-driven orchestration backbone: manages Pydantic state, triggers via @start(), @listen(), @router() decorators, conditional branching, parallel execution." },
+    { "id": "crew", "name": "Crew", "type": "core", "description": "Team container: assembles agents + tasks + process mode (sequential/hierarchical). Entry via crew.kickoff()." },
+    { "id": "agent", "name": "Agent", "type": "compute", "description": "LLM-powered unit defined by Role + Goal + Backstory. Supports delegation to other agents, memory, and tool access." },
+    { "id": "task", "name": "Task", "type": "compute", "description": "Work unit: description + expected output + assigned agent. Optional task-scoped tool override for least-privilege security." },
+    { "id": "tool", "name": "Tool", "type": "tool", "description": "External integrations (APIs, databases, search). Registered at agent-level; overridable at task-level for defense-in-depth." },
+    { "id": "process", "name": "Process Router", "type": "routing", "description": "Coordination mode selector: sequential (linear chain) or hierarchical (manager agent delegates). Routes task completion to next step." },
+    { "id": "memory", "name": "Memory", "type": "storage", "description": "Short-term (conversation context) + long-term (persistent facts). Optional Mem0 integration for user-level memory." },
+    { "id": "manager", "name": "Manager Agent", "type": "compute", "description": "In hierarchical mode: breaks goals into sub-tasks, delegates to workers, quality-checks outputs. Acts as Planner role." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "flow", "to": "crew", "label": "kickoff trigger", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "event-emit", "description": "@start() or @listen() triggers crew execution" } },
+    { "id": "f2", "from": "crew", "to": "agent", "label": "assign role", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "role-assignment", "description": "Crew assigns agents to tasks based on role configuration" } },
+    { "id": "f3", "from": "agent", "to": "task", "label": "execute", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "task-execution", "description": "Agent processes assigned task with LLM reasoning + tool use" } },
+    { "id": "f4", "from": "task", "to": "tool", "label": "invoke", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-call", "description": "Task execution may invoke tools; task-level tools override agent-level" } },
+    { "id": "f5", "from": "task", "to": "process", "label": "complete", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "completion-signal", "description": "Task marks complete; Process Router determines next step" } },
+    { "id": "f6", "from": "process", "to": "task", "label": "route to next", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "route", "description": "Sequential: next task in chain. Hierarchical: manager assigns next" } },
+    { "id": "f7", "from": "agent", "to": "memory", "label": "remember", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "memory-read-write", "description": "Store/recall conversation context and persistent facts" } },
+    { "id": "f8", "from": "manager", "to": "agent", "label": "delegate sub-task", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "delegation", "description": "Manager breaks goal into sub-tasks and assigns to worker agents" } },
+    { "id": "f9", "from": "agent", "to": "manager", "label": "report result", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "report", "description": "Worker returns completed sub-task result to manager for quality check" } },
+    { "id": "f10", "from": "crew", "to": "flow", "label": "result", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "event-callback", "description": "Crew returns result to Flow; @router() determines conditional branching" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Flow Initiation",
+        "description": "Flow receives external trigger, manages state, prepares and launches the Crew",
+        "steps": [
+          { "moduleId": "flow", "action": "trigger", "trigger": "external event / user input", "description": "@start() decorated function runs, initializes Flow state", "isEntry": true },
+          { "moduleId": "flow", "action": "prepare", "description": "Flow mutates state, prepares input context for the Crew" },
+          { "moduleId": "crew", "action": "kickoff", "description": "crew.kickoff() launches the agent team with configured process mode" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Agent Execution",
+        "description": "Agents execute tasks sequentially or hierarchically with tool use",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "agent", "action": "reason", "description": "Agent reasons over task description + role context + memory", "isEntry": true },
+          { "moduleId": "task", "action": "execute", "description": "Agent performs the task, optionally calling tools" },
+          { "moduleId": "tool", "action": "invoke", "description": "If task requires external data or action, tool is called" },
+          { "moduleId": "memory", "action": "store", "description": "Conversation context and task results stored in memory" },
+          { "moduleId": "process", "action": "route", "description": "Router determines next step: next task in chain, or manager delegation" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Result Processing",
+        "description": "Crew returns result to Flow; conditional routing determines next action",
+        "steps": [
+          { "moduleId": "crew", "action": "return", "description": "Crew completes, returns final result to Flow", "isEntry": true },
+          { "moduleId": "flow", "action": "route", "description": "@router() inspects result, conditionally branches to next step or terminates" }
+        ]
+      }
+    ]
+  }
+}

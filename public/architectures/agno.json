@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "Agno",
+    "version": "1.0+",
+    "description": "Component-based modular agent framework (formerly Phidata). Clean separation: Brain (model), Body (tools), Knowledge (RAG), Storage (sessions), Memory (user recall), Reasoning. Multi-agent via Coordinator / Router / Collaborator modes.",
+    "url": "https://github.com/agno-agi/agno",
+    "pattern": "component-based",
+    "category": "agent-framework"
+  },
+  "modules": [
+    { "id": "agent", "name": "Agent", "type": "compute", "description": "Core container assembling all components. Stateless by design — new instance per request (~2-3µs instantiation). Orchestrates model calls, tool use, knowledge retrieval." },
+    { "id": "model", "name": "Model (Brain)", "type": "tool", "description": "Unified interface to 23+ providers (OpenAI, Anthropic, Google, etc.). Multi-modal I/O: text, image, audio, video." },
+    { "id": "tools-registry", "name": "Tools Registry (Body)", "type": "routing", "description": "Manages external integrations: APIs, databases, custom services. MCP support with streaming. Resolves tool requests at runtime." },
+    { "id": "knowledge", "name": "Knowledge (RAG)", "type": "storage", "description": "Agentic RAG by default — searches 20+ vector DBs at runtime for needed context. Hybrid search (vector + keyword) rather than stuffing all context in prompt." },
+    { "id": "storage", "name": "Storage Backend", "type": "storage", "description": "Session history + state persistence in DB (SQLite, Postgres). Essential for multi-turn conversations and stateful interactions." },
+    { "id": "memory", "name": "Memory", "type": "storage", "description": "Long-term user recall: classify, store, recall user preferences across sessions. Enables personalized agent behavior." },
+    { "id": "reasoning", "name": "Reasoning Engine", "type": "core", "description": "First-class reasoning: ReasoningModels, ReasoningTools, custom chain-of-thought. Agents 'think' before responding." },
+    { "id": "agentos", "name": "AgentOS Runtime", "type": "core", "description": "Pre-built FastAPI app + browser control plane dashboard. Runs in your cloud for data privacy. Instantiates and manages agent lifecycle." },
+    { "id": "tool", "name": "Tool", "type": "tool", "description": "Individual tool functions: APIs, calculators, web search, code execution. Invoked by Agent via Tools Registry resolution." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "agentos", "to": "agent", "label": "instantiate", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "init", "description": "AgentOS creates fresh Agent instance per request" } },
+    { "id": "f2", "from": "agent", "to": "model", "label": "inference request", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "llm-api", "description": "Agent sends prompt + context to Model; receives completion response" } },
+    { "id": "f3", "from": "agent", "to": "reasoning", "label": "think", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "reason", "description": "Agent passes query through Reasoning Engine for chain-of-thought before acting" } },
+    { "id": "f4", "from": "agent", "to": "tools-registry", "label": "resolve tool", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-resolution", "description": "Agent requests tool; Registry resolves and returns appropriate tool instance" } },
+    { "id": "f5", "from": "tools-registry", "to": "tool", "label": "invoke tool", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-call", "description": "Registry invokes resolved tool; result flows back to Agent" } },
+    { "id": "f6", "from": "agent", "to": "knowledge", "label": "query context", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "rag-query", "description": "Agent queries Knowledge for domain-specific context via hybrid search" } },
+    { "id": "f7", "from": "agent", "to": "memory", "label": "recall user preferences", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "memory-io", "description": "Store/recall user preferences and facts across sessions" } },
+    { "id": "f8", "from": "agent", "to": "storage", "label": "persist session", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "session-io", "description": "Save/load conversation history and agent state" } },
+    { "id": "f9", "from": "storage", "to": "agentos", "label": "restore context", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "state-restore", "description": "On subsequent requests, AgentOS loads session state for continuity" } },
+    { "id": "f10", "from": "knowledge", "to": "agentos", "label": "index documents", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "ingestion", "description": "AgentOS feeds documents to Knowledge for vector indexing at app startup" } },
+    { "id": "f11", "from": "reasoning", "to": "model", "label": "enhanced prompt", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "prompt-enrich", "description": "Reasoning output enriches the prompt sent to the Model" } },
+    { "id": "f12", "from": "tool", "to": "agent", "label": "tool result", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "result", "description": "Tool execution result returned to Agent for analysis" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Agent Initialization",
+        "description": "AgentOS creates a fresh stateless Agent, loads session context, recalls user memory",
+        "steps": [
+          { "moduleId": "agentos", "action": "create-instance", "trigger": "user request", "description": "AgentOS creates fresh Agent instance (~2-3µs)", "isEntry": true },
+          { "moduleId": "storage", "action": "load", "description": "Session history loaded from Storage Backend" },
+          { "moduleId": "memory", "action": "recall", "description": "User preferences and facts recalled from long-term Memory" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Agent Execution Loop",
+        "description": "Agent reasons, retrieves knowledge, calls tools, and generates response",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "agent", "action": "process", "trigger": "session loaded + user input", "description": "Agent begins processing with full context", "isEntry": true },
+          { "moduleId": "reasoning", "action": "think", "description": "Reasoning Engine performs chain-of-thought before acting" },
+          { "moduleId": "knowledge", "action": "query", "description": "Agent queries Knowledge (RAG) for domain context via hybrid search" },
+          { "moduleId": "tools-registry", "action": "resolve", "description": "If tool needed: Tools Registry resolves appropriate tool" },
+          { "moduleId": "tool", "action": "execute", "description": "Resolved tool executes; result returns to Agent" },
+          { "moduleId": "model", "action": "generate", "description": "Agent sends enriched prompt (instructions + context + tool results) to Model" },
+          { "moduleId": "agent", "action": "respond", "description": "Agent formats final response from model output" }
+        ]
+      }
+    ]
+  }
+}

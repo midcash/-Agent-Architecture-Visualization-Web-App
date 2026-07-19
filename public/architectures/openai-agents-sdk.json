@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "OpenAI Agents SDK",
+    "version": "0.1+",
+    "description": "Handoff-based agent architecture (Swarm pattern) — lightweight primitives for dynamic agent delegation. A ReAct loop where agents transfer control to specialists via handoff tools. Minimalist design: no graphs, no built-in vector memory.",
+    "url": "https://github.com/openai/openai-agents-python",
+    "pattern": "handoff",
+    "category": "orchestration"
+  },
+  "modules": [
+    { "id": "runner", "name": "Runner", "type": "core", "description": "Execution loop: manages turns, dispatches tool calls, evaluates guardrails, handles handoff transitions, produces RunResult." },
+    { "id": "agent", "name": "Agent", "type": "compute", "description": "Central class: name, instructions (system prompt), tools list, optional output_type (Pydantic), optional handoffs to other agents, optional I/O guardrails." },
+    { "id": "handoff", "name": "Handoff", "type": "routing", "description": "Delegation primitive: exposed as a tool (transfer_to_<agent>). Runner switches active agent, transfers conversation context." },
+    { "id": "guardrails", "name": "Guardrails", "type": "routing", "description": "Input guardrails (screen before processing), output guardrails (validate final response), tool guardrails (wrap tool calls)." },
+    { "id": "session", "name": "Session", "type": "storage", "description": "Persistent conversation with auto message history. Default SQLiteSession; custom backends supported." },
+    { "id": "tracing", "name": "Tracing", "type": "storage", "description": "First-party spans: nested trees showing model calls, tool invocations, handoff transitions. Viewable in OpenAI dashboard." },
+    { "id": "tool", "name": "Tool", "type": "tool", "description": "External function integrations. Can be @function_tool decorated Python functions. Agent-as-Tool enables hub-and-spoke orchestration." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "runner", "to": "agent", "label": "invoke agent", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "invocation", "description": "Runner.run(agent, input) starts the execution loop for the given agent" } },
+    { "id": "f2", "from": "agent", "to": "guardrails", "label": "check input", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "guardrail-check", "description": "Input guardrail screens user message before agent processes it" } },
+    { "id": "f3", "from": "agent", "to": "handoff", "label": "transfer control", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "handoff", "description": "Agent calls transfer_to_<agent> tool to delegate to a specialist" } },
+    { "id": "f4", "from": "handoff", "to": "agent", "label": "delegate to specialist", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "delegation", "description": "Runner switches active agent, transfers conversation context to the specialist" } },
+    { "id": "f5", "from": "agent", "to": "tool", "label": "use tool", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-call", "description": "Agent invokes tools; tool results flow back" } },
+    { "id": "f6", "from": "runner", "to": "session", "label": "persist", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "session-io", "description": "Runner saves/loads conversation history to/from Session" } },
+    { "id": "f7", "from": "agent", "to": "tracing", "label": "emit span", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "tracing", "description": "Each model call, tool invocation, and handoff emits a trace span" } },
+    { "id": "f8", "from": "runner", "to": "guardrails", "label": "validate output", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "output-check", "description": "Output guardrail validates final response before returning to user" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Agent Invocation & ReAct Loop",
+        "description": "Runner invokes agent; agent reasons, calls tools, may hand off; loop continues until final answer",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "runner", "action": "invoke", "trigger": "user input", "description": "Runner.run(agent, input) starts execution", "isEntry": true },
+          { "moduleId": "agent", "action": "reason", "description": "Agent processes instructions + conversation history, decides: tool call, handoff, or final answer" },
+          { "moduleId": "tool", "action": "execute", "description": "If agent chooses tool call: tool executes, result appends to conversation" },
+          { "moduleId": "handoff", "action": "transfer", "description": "If agent chooses handoff: Runner switches active agent, transfers context" },
+          { "moduleId": "guardrails", "action": "check", "description": "If final answer: output guardrail validates before returning" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Session Persistence & Tracing",
+        "description": "Runner persists conversation state and emits tracing data",
+        "steps": [
+          { "moduleId": "session", "action": "save", "description": "Runner saves complete conversation history to Session store", "isEntry": true },
+          { "moduleId": "tracing", "action": "emit", "description": "All spans (model calls, tools, handoffs) flushed to tracing backend" }
+        ]
+      }
+    ]
+  }
+}

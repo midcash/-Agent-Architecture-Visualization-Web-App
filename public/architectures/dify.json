@@ -1,0 +1,74 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "Dify",
+    "version": "1.0+",
+    "description": "Visual DAG-based low-code AI application platform. Drag-and-drop canvas for building LLM workflows (Chatflow + Workflow modes). Agent node supports ReAct and Function Calling strategies. Enterprise features: knowledge base RAG, tool plugin ecosystem, conversation logs, annotation-based fine-tuning.",
+    "url": "https://github.com/langgenius/dify",
+    "pattern": "visual-dag",
+    "category": "platform"
+  },
+  "modules": [
+    { "id": "canvas", "name": "Visual Canvas", "type": "core", "description": "Drag-and-drop workflow editor. Users compose Chatflow (conversational) or Workflow (batch pipeline) by connecting nodes. Auto-saves to backend." },
+    { "id": "dag-engine", "name": "DAG Engine", "type": "routing", "description": "Workflow runtime orchestrator. Validates DAG topology, manages execution order, handles branching (IF/ELSE) and iteration (Iteration node), resolves variable references." },
+    { "id": "node-executor", "name": "Node Executor", "type": "compute", "description": "Per-node execution sandbox. Each node type has a registered executor: LLM, Knowledge Retrieval, Tool, Code (Python/JS sandbox), HTTP Request, Template transform." },
+    { "id": "context-pool", "name": "Context Pool", "type": "storage", "description": "Shared state container across the workflow run. Stores node outputs, conversation variables, session metadata. All nodes read/write via variable references." },
+    { "id": "llm-node", "name": "LLM Node", "type": "compute", "description": "Model invocation node: system + user prompt with variable injection, memory window settings, vision support. Wraps provider SDKs (OpenAI, Anthropic, etc.)." },
+    { "id": "knowledge-node", "name": "Knowledge Retrieval", "type": "storage", "description": "RAG pipeline node: embedding → vector search → rerank. Connects to Knowledge Bases (uploaded documents via chunking + indexing pipeline)." },
+    { "id": "tool-node", "name": "Tool Node", "type": "tool", "description": "Plugin ecosystem node: 100+ built-in tools (search, image gen, code exec, APIs). Custom tools via OpenAPI spec or Python plugin SDK." },
+    { "id": "agent-node", "name": "Agent Node", "type": "compute", "description": "Autonomous agent loop: ReAct (reasoning + acting) or Function Calling strategy. Has access to tools, knowledge, and LLM. Iterates until Final Answer." },
+    { "id": "ifelse-node", "name": "IF/ELSE Node", "type": "routing", "description": "Conditional branching on variable values. Supports multiple conditions (AND/OR logic) with true/false output branches. Enables dynamic workflow paths." },
+    { "id": "code-node", "name": "Code Node", "type": "compute", "description": "Custom code execution in sandboxed Python3 or JavaScript. Receives inputs as args, returns structured output. Used for data transformation and custom logic." },
+    { "id": "iteration-node", "name": "Iteration Node", "type": "routing", "description": "Loop container: iterates over array variable, executes child nodes for each item. Output aggregated into array. Enables batch processing patterns." },
+    { "id": "http-node", "name": "HTTP Request Node", "type": "external", "description": "External API call node: GET/POST/PUT/DELETE with headers, body, authorization. Response parsed into variables for downstream nodes." },
+    { "id": "variable-aggregator", "name": "Variable Aggregator", "type": "routing", "description": "Merges multiple branch outputs into single variable. Used after IF/ELSE to converge divergent paths back into one flow." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "canvas", "to": "dag-engine", "label": "deploy workflow", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "serialize", "description": "User publishes canvas; DAG serialized to backend, validated for topology" } },
+    { "id": "f2", "from": "dag-engine", "to": "node-executor", "label": "dispatch node", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "execution-order", "description": "DAG Engine resolves next runnable node(s) based on dependencies and dispatches to executor" } },
+    { "id": "f3", "from": "node-executor", "to": "llm-node", "label": "run LLM", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "llm-invoke", "description": "Executor invokes LLM node; model response returned with token usage" } },
+    { "id": "f4", "from": "node-executor", "to": "knowledge-node", "label": "retrieve", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "rag-query", "description": "Executor queries Knowledge node; embedding search + rerank returns relevant chunks" } },
+    { "id": "f5", "from": "node-executor", "to": "tool-node", "label": "invoke tool", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "tool-call", "description": "Executor invokes Tool node; external API/tool response returned" } },
+    { "id": "f6", "from": "node-executor", "to": "code-node", "label": "execute code", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "sandbox-exec", "description": "Executor runs code in sandboxed Python/JS environment; returns structured output" } },
+    { "id": "f7", "from": "node-executor", "to": "http-node", "label": "HTTP request", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "http-call", "description": "Executor fires HTTP request to external service; response parsed into variables" } },
+    { "id": "f8", "from": "node-executor", "to": "agent-node", "label": "run agent loop", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "agent-strategy", "description": "Executor launches agent; ReAct/FunctionCalling loop runs until Final Answer" } },
+    { "id": "f9", "from": "agent-node", "to": "llm-node", "label": "reason", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "agent-llm", "description": "Agent node calls LLM for reasoning step; receives thought + action decision" } },
+    { "id": "f10", "from": "agent-node", "to": "tool-node", "label": "act", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "agent-tool", "description": "Agent invokes tool during ReAct cycle; tool result feeds next reasoning step" } },
+    { "id": "f11", "from": "agent-node", "to": "knowledge-node", "label": "research", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "agent-knowledge", "description": "Agent queries knowledge base for context during reasoning loop" } },
+    { "id": "f12", "from": "node-executor", "to": "context-pool", "label": "write output", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "state-rw", "description": "Node output written to Context Pool; downstream nodes read via variable references" } },
+    { "id": "f13", "from": "dag-engine", "to": "ifelse-node", "label": "evaluate condition", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "branch", "description": "DAG Engine evaluates IF/ELSE conditions against Context Pool variables, selects branch" } },
+    { "id": "f14", "from": "dag-engine", "to": "iteration-node", "label": "iterate", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "loop", "description": "DAG Engine iterates over array, executes child nodes per item, aggregates results" } },
+    { "id": "f15", "from": "ifelse-node", "to": "variable-aggregator", "label": "merge branches", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "merge", "description": "Both IF and ELSE branch outputs converge at Variable Aggregator before continuing" } },
+    { "id": "f16", "from": "context-pool", "to": "dag-engine", "label": "read state", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "state-read", "description": "DAG Engine reads context to determine next nodes and resolve variable references" } },
+    { "id": "f17", "from": "node-executor", "to": "dag-engine", "label": "node complete", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "completion", "description": "Executor signals node completion; DAG Engine determines next node(s) in topology" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Canvas Design & Deploy",
+        "description": "User designs workflow on visual canvas; Dify serializes, validates, and registers the DAG",
+        "steps": [
+          { "moduleId": "canvas", "action": "compose", "trigger": "user drag-and-drop", "description": "User arranges nodes and connects them on the Visual Canvas", "isEntry": true },
+          { "moduleId": "canvas", "action": "publish", "description": "Canvas serializes workflow graph to JSON and sends to backend" },
+          { "moduleId": "dag-engine", "action": "validate", "description": "DAG Engine validates: no cycles, all variable refs resolvable, all required inputs connected" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Workflow Execution",
+        "description": "DAG Engine orchestrates node execution depth-first respecting dependencies; branches and loops handled",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "dag-engine", "action": "resolve", "trigger": "user submits input / API call", "description": "DAG Engine resolves entry nodes and initializes Context Pool with input variables", "isEntry": true },
+          { "moduleId": "context-pool", "action": "read", "description": "DAG Engine reads Context Pool to resolve variable references for current node(s)" },
+          { "moduleId": "dag-engine", "action": "dispatch", "description": "DAG Engine dispatches next ready node(s) to Node Executor for execution" },
+          { "moduleId": "node-executor", "action": "execute", "description": "Node Executor runs the node (LLM/KB/Tool/Code/HTTP/Agent) in appropriate sandbox" },
+          { "moduleId": "context-pool", "action": "write", "description": "Node output stored in Context Pool for downstream consumption" },
+          { "moduleId": "dag-engine", "action": "evaluate-branches", "description": "After IF/ELSE: evaluate conditions against context, select branch. After Iteration: loop or proceed." },
+          { "moduleId": "dag-engine", "action": "next-or-end", "description": "DAG Engine checks for remaining unvisited nodes; continues loop or marks workflow complete" }
+        ]
+      }
+    ]
+  }
+}

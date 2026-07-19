@@ -118,9 +118,9 @@ export const frameworks: FrameworkEntry[] = [
     category: 'platform',
     file: 'dify.json',
     color: '#6366f1',
-    moduleCount: 12,
-    flowCount: 14,
-    phaseCount: 3,
+    moduleCount: 13,
+    flowCount: 17,
+    phaseCount: 2,
   },
 ]
 

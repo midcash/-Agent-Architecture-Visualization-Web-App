@@ -1,0 +1,68 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "LangGraph",
+    "version": "0.4+",
+    "description": "State graph execution engine inspired by Google's Pregel — super-steps with message-passing between computation nodes. Built by LangChain.",
+    "url": "https://github.com/langchain-ai/langgraph",
+    "pattern": "state-graph",
+    "category": "orchestration"
+  },
+  "modules": [
+    { "id": "state", "name": "State (StateGraph)", "type": "core", "description": "Shared data structure (TypedDict/Pydantic) defining the graph's truth source. Reducer functions merge partial updates from each node." },
+    { "id": "nodes", "name": "Nodes", "type": "compute", "description": "Computation units — Python functions or LangChain runnables that receive State and return partial updates. Includes ToolNode for tool execution." },
+    { "id": "edges", "name": "Edges", "type": "routing", "description": "Control flow: normal edges (fixed A→B), conditional edges (routing function inspects State), entry points." },
+    { "id": "checkpointer", "name": "Checkpointer", "type": "storage", "description": "Persists state after every super-step per thread_id. Enables recovery, time-travel debugging, and human-in-the-loop." },
+    { "id": "store", "name": "Store (BaseStore)", "type": "storage", "description": "Cross-thread long-term memory — key-value namespace store shared across conversation threads." },
+    { "id": "command", "name": "Command", "type": "routing", "description": "Unified primitive combining state update + routing in one return value: Command(update=..., goto=...)." },
+    { "id": "pregel-runner", "name": "Pregel Runner", "type": "core", "description": "Execution loop — activates nodes by super-step, collects messages, applies reducers, votes to halt when all idle." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "pregel-runner", "to": "nodes", "label": "super-step trigger", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "message-passing", "description": "Pregel Runner activates nodes that received messages on incoming channels" } },
+    { "id": "f2", "from": "state", "to": "nodes", "label": "state read", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "state-read", "description": "Each node reads the current State at the start of its invocation" } },
+    { "id": "f3", "from": "nodes", "to": "state", "label": "state write (partial update)", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "state-write", "description": "Nodes return partial state updates merged via reducers" } },
+    { "id": "f4", "from": "nodes", "to": "edges", "label": "transition request", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "route-request", "description": "After execution, the node's exit triggers edge traversal" } },
+    { "id": "f5", "from": "edges", "to": "nodes", "label": "route to next node", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "route", "description": "Edges determine which nodes receive messages in the next super-step" } },
+    { "id": "f6", "from": "state", "to": "checkpointer", "label": "checkpoint save", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "checkpoint-save", "description": "State snapshot saved after each super-step" } },
+    { "id": "f7", "from": "checkpointer", "to": "state", "label": "checkpoint restore", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "checkpoint-restore", "description": "Recover state from any checkpoint for replay or human intervention" } },
+    { "id": "f8", "from": "command", "to": "state", "label": "resume with update", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "command-resume", "description": "Command(update=...) merges state and Command(goto=...) routes simultaneously" } },
+    { "id": "f9", "from": "store", "to": "nodes", "label": "cross-thread context", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "memory-read-write", "description": "Nodes access long-term memory across conversation threads" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Super-Step Execution",
+        "description": "Pregel super-step cycle: activate nodes → execute → update state → checkpoint → route to next",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "pregel-runner", "action": "activate", "trigger": "messages in channel", "description": "Runner activates all nodes that received messages in their incoming channels", "isEntry": true },
+          { "moduleId": "state", "action": "read", "description": "Each activated node reads current State via state-read protocol" },
+          { "moduleId": "nodes", "action": "execute", "description": "Node function runs with State as input, produces partial update" },
+          { "moduleId": "state", "action": "write", "description": "Partial update merged into State using channel-specific reducer functions" },
+          { "moduleId": "checkpointer", "action": "save", "description": "State snapshot persisted per thread_id for recovery" },
+          { "moduleId": "edges", "action": "route", "description": "Exit edges determine destination nodes; conditional edges inspect State for branching", "isExit": true }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Halt Vote & Termination",
+        "description": "All nodes vote on whether to continue; execution ends when all are idle and no messages in transit",
+        "repeat": "until-idle",
+        "steps": [
+          { "moduleId": "pregel-runner", "action": "halt-vote", "description": "Each node votes. Idle nodes vote to halt. If all idle and no messages in transit → terminate" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Human-in-the-Loop Interrupt",
+        "description": "Optional: execution pauses at marked nodes for human approval, then resumes via Command",
+        "repeat": "once",
+        "steps": [
+          { "moduleId": "checkpointer", "action": "interrupt-save", "description": "State saved before interrupt point", "isEntry": true },
+          { "moduleId": "command", "action": "resume", "description": "Human provides approval/edit via Command(update, goto), execution resumes" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "MetaGPT",
+    "version": "0.8+",
+    "description": "SOP-based multi-agent pipeline applying Standard Operating Procedures to LLM agents. Simulates a complete software company: ProductManager → Architect → ProjectManager → Engineer → QaEngineer. Code = SOP(Team).",
+    "url": "https://github.com/FoundationAgents/MetaGPT",
+    "pattern": "sop-pipeline",
+    "category": "multi-agent"
+  },
+  "modules": [
+    { "id": "environment", "name": "Environment", "type": "core", "description": "Shared public square — agents publish and subscribe to messages. The communication fabric between all roles." },
+    { "id": "memory", "name": "Memory", "type": "storage", "description": "Indexed message storage keyed by cause_by (action class name). Enables agents to retrieve context-relevant messages." },
+    { "id": "role", "name": "Role", "type": "compute", "description": "Agent identity template — defines skills, workflow, and the observe-think-act loop. Each role is a specialized agent (PM, Architect, Engineer, etc.)." },
+    { "id": "action", "name": "Action", "type": "compute", "description": "Atomic sub-task: WritePRD, WriteDesign, WriteCode, WriteTest, RunCode, DebugError. Each action produces structured output." },
+    { "id": "tool", "name": "Tool", "type": "tool", "description": "Common services: search engines, web browsers, file systems, OCR. Available to all roles." },
+    { "id": "sop-engine", "name": "SOP Engine", "type": "routing", "description": "Orchestrates the SOP pipeline: decomposes the workflow, assigns roles to stages, monitors standardized output format." },
+    { "id": "ota-loop", "name": "O-T-A Loop", "type": "core", "description": "Every role's execution loop: _observe() → _think() → _act(). Three react modes: BY_ORDER, REACT, PLAN_AND_ACT." },
+    { "id": "knowledge-base", "name": "Knowledge Base", "type": "storage", "description": "Persistent domain knowledge: design patterns, coding standards, common solutions. Shared across all roles for consistency." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "environment", "to": "role", "label": "observe messages", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "pub/sub", "description": "Role's _observe() retrieves new messages from Environment's MessageQueue filtered by cause_by" } },
+    { "id": "f2", "from": "role", "to": "memory", "label": "recall context", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "memory-read", "description": "Role retrieves indexed messages from Memory for context" } },
+    { "id": "f3", "from": "role", "to": "ota-loop", "label": "think → decide action", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "react-mode", "description": "Role._think() selects next action based on react_mode (BY_ORDER/REACT/PLAN_AND_ACT)" } },
+    { "id": "f4", "from": "ota-loop", "to": "action", "label": "execute action", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "action-dispatch", "description": "Selected Action is executed, producing structured output" } },
+    { "id": "f5", "from": "action", "to": "tool", "label": "use tool", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-invoke", "description": "Action may invoke Tools for external data or computation" } },
+    { "id": "f6", "from": "action", "to": "sop-engine", "label": "complete step", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "step-complete", "description": "Action signals completion; SOP Engine determines next stage" } },
+    { "id": "f7", "from": "sop-engine", "to": "role", "label": "assign next role", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "role-assignment", "description": "SOP Engine assigns the next role in the pipeline based on SOP definition" } },
+    { "id": "f8", "from": "action", "to": "environment", "label": "write result", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "publish", "description": "Action output wrapped as AIMessage, stored in Memory, published to Environment" } },
+    { "id": "f9", "from": "role", "to": "knowledge-base", "label": "learn / recall", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "knowledge-io", "description": "Roles query Knowledge Base for domain expertise and contribute new learnings" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Requirements Analysis",
+        "description": "ProductManager role analyzes user requirement, produces PRD with user stories and analysis",
+        "steps": [
+          { "moduleId": "environment", "action": "receive-requirement", "trigger": "user input (one-line requirement)", "description": "Raw requirement enters the Environment", "isEntry": true },
+          { "moduleId": "ota-loop", "action": "observe", "description": "ProductManager._observe() picks up the requirement from Environment" },
+          { "moduleId": "ota-loop", "action": "think", "description": "Decides to execute WritePRD action based on BY_ORDER react mode" },
+          { "moduleId": "action", "action": "WritePRD", "description": "Produces PRD JSON with user stories, competitive analysis, requirements" },
+          { "moduleId": "environment", "action": "publish", "description": "PRD published to Environment for Architect to consume" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "System Design",
+        "description": "Architect role designs data structures, API, and system diagrams from the PRD",
+        "steps": [
+          { "moduleId": "role", "action": "observe", "trigger": "PRD message in Environment", "description": "Architect role picks up PRD from Environment", "isEntry": true },
+          { "moduleId": "memory", "action": "recall", "description": "Architect retrieves relevant design patterns from Memory and Knowledge Base" },
+          { "moduleId": "action", "action": "WriteDesign", "description": "Produces data structure definitions, API design, system architecture diagrams" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Task Breakdown",
+        "description": "ProjectManager decomposes design into implementable tasks with dependency ordering",
+        "steps": [
+          { "moduleId": "role", "action": "observe", "trigger": "Design message in Environment", "description": "ProjectManager picks up Design from Environment", "isEntry": true },
+          { "moduleId": "action", "action": "WriteTasks", "description": "Produces task breakdown with requirements.txt and implementation order" }
+        ]
+      },
+      {
+        "id": "phase-4",
+        "name": "Implementation & Testing",
+        "description": "Engineer writes code with self-review; QaEngineer writes and runs tests with iterative debugging",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "role", "action": "observe", "trigger": "Tasks message in Environment", "description": "Engineer picks up task breakdown", "isEntry": true },
+          { "moduleId": "action", "action": "WriteCode", "description": "Engineer generates source code based on design and tasks" },
+          { "moduleId": "action", "action": "WriteCodeReview", "description": "Self-review: code quality and correctness check (WriteCode ↔ SummarizeCode loop)" },
+          { "moduleId": "sop-engine", "action": "route-to-QA", "description": "SOP Engine routes completed code to QaEngineer role" },
+          { "moduleId": "action", "action": "WriteTest", "description": "QaEngineer generates unit tests" },
+          { "moduleId": "action", "action": "RunCode → DebugError", "description": "Test execution with iterative debugging loop until all tests pass" }
+        ]
+      }
+    ]
+  }
+}
