@@ -1,0 +1,74 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "Pi Agent",
+    "version": "0.8+",
+    "description": "Layered TypeScript monorepo — strict 4-layer architecture (pi-ai → pi-agent-core → pi-coding-agent → pi-tui). Explicit context control, self-extensible tool system, ReAct double-loop with human-in-the-loop steering. Built by Mario Zechner (badlogic) as a 'factory for building AI assistants'.",
+    "url": "https://github.com/badlogic/pi-mono",
+    "pattern": "layered",
+    "category": "coding-agent"
+  },
+  "modules": [
+    { "id": "pi-ai", "name": "pi-ai (Foundation)", "type": "core", "description": "Unified LLM API for 20+ providers (OpenAI, Anthropic, Google, xAI, Groq, Ollama, vLLM). TypeBox tool schemas. Context serialization and provider-native message conversion. Zero dependencies on upper layers." },
+    { "id": "pi-agent-core", "name": "pi-agent-core (Agent Runtime)", "type": "compute", "description": "Generic ReAct agent runtime: double-loop design (outer steering loop + inner tool-call loop). State machine, event streaming, parallel/sequential tool execution. transformContext + convertToLlm hooks for explicit control." },
+    { "id": "pi-coding-agent", "name": "pi-coding-agent (CLI)", "type": "compute", "description": "Interactive CLI coding agent. Session persistence, custom tool sets, theme engine, hooks. Loads project context from AGENTS.md/CLAUDE.md. Self-extensible — agent can modify its own tools and prompts." },
+    { "id": "pi-tui", "name": "pi-tui (Terminal UI)", "type": "external", "description": "Retained-mode differential rendering terminal UI. Markdown rendering, autocomplete editors, streaming tool output display. Subscribes to agent event stream for real-time updates." },
+    { "id": "transform-context", "name": "Context Transform Hook", "type": "routing", "description": "Plugin point: optional pruning, compaction, or retrieval injection before each turn. Gives developers full control over what enters the model's context window." },
+    { "id": "tool-executor", "name": "Tool Executor", "type": "routing", "description": "Executes tool calls from agent loop. Supports parallel (default) and sequential modes. Emits typed events: tool_execution_start/update/end." },
+    { "id": "session-store", "name": "Session Store", "type": "storage", "description": "Persistent conversation sessions. Stores AgentMessage[] history, system prompt, tool definitions. Enables session suspend/resume across CLI restarts." },
+    { "id": "pi-mom", "name": "pi-mom (Slack Bot)", "type": "external", "description": "Slack integration — connects Pi Agent as a bot in Slack workspaces. Channels messages through same agent loop, delivers responses back to threads." },
+    { "id": "pi-pods", "name": "pi-pods (GPU Manager)", "type": "external", "description": "Remote GPU pod manager for self-hosted vLLM deployment. Provisions and manages inference infrastructure independently of the agent loop." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "pi-coding-agent", "to": "pi-agent-core", "label": "delegate task", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "agent-run", "description": "CLI receives user input → delegates to Agent Core for ReAct loop execution" } },
+    { "id": "f2", "from": "pi-agent-core", "to": "pi-ai", "label": "LLM inference", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "llm-api", "description": "Core sends provider-native messages; pi-ai returns streaming or complete response" } },
+    { "id": "f3", "from": "pi-agent-core", "to": "transform-context", "label": "pre-process context", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "hook", "description": "Before each turn: optional pruning/compaction/retrieval injection via transformContext hook" } },
+    { "id": "f4", "from": "pi-agent-core", "to": "tool-executor", "label": "execute tools", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-exec", "description": "Model returns tool calls → Tool Executor runs in parallel or sequential mode → results flow back" } },
+    { "id": "f5", "from": "pi-agent-core", "to": "session-store", "label": "persist session", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "session-io", "description": "Save/load AgentMessage[] history + system prompt for session continuity" } },
+    { "id": "f6", "from": "pi-agent-core", "to": "pi-tui", "label": "stream events", "type": "streaming", "direction": "unidirectional", "metadata": { "protocol": "event-stream", "description": "Typed event stream (agent_start → turn_start → text_* → toolcall_* → tool_exec_* → turn_end → agent_end)" } },
+    { "id": "f7", "from": "pi-coding-agent", "to": "pi-mom", "label": "Slack messages", "type": "event", "direction": "bidirectional", "metadata": { "protocol": "slack-bot", "description": "Inbound Slack messages → agent loop → response back to Slack thread" } },
+    { "id": "f8", "from": "pi-coding-agent", "to": "pi-pods", "label": "manage GPUs", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "gpu-mgmt", "description": "Provision/stop remote GPU pods for self-hosted vLLM inference" } },
+    { "id": "f9", "from": "pi-ai", "to": "pi-pods", "label": "route inference", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "vllm", "description": "pi-ai routes inference requests to remote vLLM pods when using self-hosted models" } },
+    { "id": "f10", "from": "tool-executor", "to": "session-store", "label": "log tool results", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "audit", "description": "Tool execution results appended to session history for context continuity" } },
+    { "id": "f11", "from": "pi-agent-core", "to": "pi-mom", "label": "bot response", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "slack-response", "description": "Agent response delivered back to Slack channel via pi-mom" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Context Preparation",
+        "description": "Load session, transform context, convert to provider-native format",
+        "steps": [
+          { "moduleId": "pi-coding-agent", "action": "receive-input", "trigger": "user prompt in CLI", "description": "CLI receives user input; loads AGENTS.md/CLAUDE.md project context", "isEntry": true },
+          { "moduleId": "session-store", "action": "load", "description": "Restore previous AgentMessage[] history and system prompt if resuming session" },
+          { "moduleId": "transform-context", "action": "pre-process", "description": "Optional hook: prune old messages, inject retrieved context, compact if needed" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "ReAct Double Loop",
+        "description": "Outer loop (steering) → Inner loop (tool calls). Thought → Action → Observation cycle with event streaming.",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "pi-agent-core", "action": "outer-loop", "trigger": "context prepared", "description": "Outer while(true): manages steering/follow-up with human-in-the-loop intervention", "isEntry": true },
+          { "moduleId": "pi-ai", "action": "stream-assistant", "description": "Convert messages to provider-native format; stream response: thinking + text + tool calls" },
+          { "moduleId": "pi-agent-core", "action": "inner-loop", "description": "Inner while(hasMoreToolCalls): Thought → Action → Observation. Emits typed events." },
+          { "moduleId": "tool-executor", "action": "execute", "description": "Run tool calls in parallel (default) or sequential mode; emit start/update/end events" },
+          { "moduleId": "pi-tui", "action": "render", "description": "TUI subscribes to event stream; differential rendering updates display in real-time" },
+          { "moduleId": "pi-agent-core", "action": "decide", "description": "After tool results: model decides — more tools, or final answer (terminate: true)" },
+          { "moduleId": "session-store", "action": "save", "description": "Append tool results and response to session history for future turns" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Response Delivery",
+        "description": "Format final answer and deliver to user",
+        "steps": [
+          { "moduleId": "pi-agent-core", "action": "finalize", "description": "Model emits final text without tool calls; inner loop terminates", "isEntry": true },
+          { "moduleId": "pi-tui", "action": "display", "description": "Final answer rendered in terminal via markdown-aware differential display" },
+          { "moduleId": "session-store", "action": "persist", "description": "Complete session saved for suspend/resume on next CLI invocation" }
+        ]
+      }
+    ]
+  }
+}

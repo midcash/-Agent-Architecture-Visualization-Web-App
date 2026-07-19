@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "Claude Code",
+    "version": "2.1+",
+    "description": "Master-loop architecture — single-threaded while-loop agent (nO engine) with tool orchestration, subagent dispatch, h2A real-time steering, context compaction (wU2), and progressive disclosure skills. Built by Anthropic as a CLI coding agent.",
+    "url": "https://code.claude.com/docs/en/how-claude-code-works",
+    "pattern": "master-loop",
+    "category": "coding-agent"
+  },
+  "modules": [
+    { "id": "no-engine", "name": "nO Master Loop", "type": "core", "description": "Single-threaded while-loop: while(tool_calls exist) → execute tool → feed results → model decides next action. Terminates when model produces plain text without tool calls." },
+    { "id": "h2a-queue", "name": "h2A Steering Queue", "type": "routing", "description": "Async dual-buffer queue for real-time user intervention. Inject new instructions mid-task without restarting. Esc to stop, type correction + Enter to queue." },
+    { "id": "tool-engine", "name": "Tool Engine & Scheduler", "type": "routing", "description": "Orchestrates 18+ tools: Read/Edit/Write (files), Grep/Glob (regex search, no vector DBs), Bash (universal adapter), WebSearch/WebFetch, ToolSearch (dynamic discovery), Agent/Skill/TaskCreate (orchestration)." },
+    { "id": "wu2-compressor", "name": "wU2 Context Compressor", "type": "storage", "description": "Auto-triggers at ~92% context utilization. Clears old tool outputs, summarizes conversation, moves key info to long-term memory. Maintains prefix cache stability." },
+    { "id": "subagent-dispatcher", "name": "Subagent Dispatcher", "type": "compute", "description": "Spawns typed subagents (Explore, Plan, general-purpose) with fresh uncorrelated context windows. Up to 16 concurrent, 1000 per run. Strict depth limits — subagents cannot spawn sub-subagents." },
+    { "id": "memory-system", "name": "Memory System", "type": "storage", "description": "Markdown-based long-term storage: CLAUDE.md (project rules), MEMORY.md (persistent facts). No vector DBs — prioritizes reliability and debuggability over semantic search." },
+    { "id": "planning-system", "name": "Planning System", "type": "core", "description": "EnterPlanMode → explore codebase → design approach → user approval → execute. Plan-first approach boosts success rate 2-3x. TodoWrite tracks structured task lists with dependencies." },
+    { "id": "skill-loader", "name": "Skill Loader", "type": "routing", "description": "Progressive disclosure: only name + description in context (~tens of tokens). Full instructions load on demand when skill is invoked. Enables dozens of workflows without context explosion." },
+    { "id": "permission-gate", "name": "Permission Gate", "type": "routing", "description": "5-tier permission system: Manual → Accept Edits → Plan → Auto → Bypass. Risk-level classification on Bash commands, injection filtering, checkpoint snapshots before every file edit." },
+    { "id": "streamgen", "name": "StreamGen Output", "type": "external", "description": "Streaming output generator. Formats tool results, renders interactive todo lists, displays diffs. Delivers real-time feedback to CLI/TUI/VS Code/Web UI." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "no-engine", "to": "tool-engine", "label": "dispatch tool call", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-dispatch", "description": "nO loop detects tool_call in model response → dispatches to Tool Engine; result flows back" } },
+    { "id": "f2", "from": "no-engine", "to": "h2a-queue", "label": "check for steering", "type": "event", "direction": "bidirectional", "metadata": { "protocol": "interrupt", "description": "Before each turn, nO checks h2A queue for user-injected corrections or redirections" } },
+    { "id": "f3", "from": "no-engine", "to": "wu2-compressor", "label": "compact context", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "compaction", "description": "At ~92% utilization, nO triggers wU2 to summarize old turns, free context space" } },
+    { "id": "f4", "from": "no-engine", "to": "subagent-dispatcher", "label": "spawn subagents", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "subagent", "description": "nO spawns typed subagents for parallel exploration; summarized results return to main context" } },
+    { "id": "f5", "from": "no-engine", "to": "memory-system", "label": "read/write memory", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "memory-io", "description": "Read CLAUDE.md/MEMORY.md at session start; write important facts for persistence across sessions" } },
+    { "id": "f6", "from": "no-engine", "to": "planning-system", "label": "plan before execute", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "plan-mode", "description": "User requests plan mode → explore codebase → propose plan → approved → execute tasks" } },
+    { "id": "f7", "from": "no-engine", "to": "skill-loader", "label": "load skill on demand", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "skill-dispatch", "description": "When skill name matches, Skill Loader injects full skill instructions into context" } },
+    { "id": "f8", "from": "tool-engine", "to": "permission-gate", "label": "evaluate risk", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "permission-check", "description": "Before Bash/file edit, Tool Engine passes command through Permission Gate for risk assessment" } },
+    { "id": "f9", "from": "subagent-dispatcher", "to": "wu2-compressor", "label": "summarize results", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "summary", "description": "Subagent results are summarized before injection into main context to prevent pollution" } },
+    { "id": "f10", "from": "no-engine", "to": "streamgen", "label": "stream output", "type": "streaming", "direction": "unidirectional", "metadata": { "protocol": "stream", "description": "nO streams tool outputs and final response through StreamGen to user-facing UI" } },
+    { "id": "f11", "from": "skill-loader", "to": "memory-system", "label": "cache skill context", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "cache", "description": "Loaded skill instructions benefit from prefix caching for subsequent invocations" } },
+    { "id": "f12", "from": "h2a-queue", "to": "tool-engine", "label": "cancel current tool", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "interrupt", "description": "Esc key signal flows through h2A → Tool Engine cancels running tool call immediately" } },
+    { "id": "f13", "from": "planning-system", "to": "subagent-dispatcher", "label": "parallel exploration", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "explore", "description": "Plan phase spawns Explore subagents to read files across codebase in parallel" } },
+    { "id": "f14", "from": "permission-gate", "to": "memory-system", "label": "snapshot before edit", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "checkpoint", "description": "Every file edit is snapshotted before modification, enabling undo/revert" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Context Loading & Warm-Up",
+        "description": "Load CLAUDE.md, MEMORY.md, resolve project rules; warm prefix cache with tool specs and subagent prompts",
+        "steps": [
+          { "moduleId": "memory-system", "action": "load", "trigger": "session start", "description": "Read CLAUDE.md (~20K+ tokens of project rules) and MEMORY.md (persistent facts)", "isEntry": true },
+          { "moduleId": "skill-loader", "action": "register", "description": "Register available skills by name + description only (~tens of tokens each until invoked)" },
+          { "moduleId": "subagent-dispatcher", "action": "warm-up", "description": "Prime subagent system prompts into prefix cache for faster subsequent spawns" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Master Agent Loop (nO)",
+        "description": "while(tool_calls): gather context → take action → verify results. Model decides each next step autonomously.",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "no-engine", "action": "receive-task", "trigger": "user prompt", "description": "nO receives task, appends to conversation history", "isEntry": true },
+          { "moduleId": "h2a-queue", "action": "check-interrupt", "description": "Before each turn, check h2A queue for user-injected steering commands" },
+          { "moduleId": "tool-engine", "action": "grep + read", "description": "Search codebase with regex (Grep), read relevant files (Glob/Read) — no vector DBs" },
+          { "moduleId": "planning-system", "action": "plan-if-requested", "description": "If user requests plan mode: explore → propose → await approval → execute" },
+          { "moduleId": "subagent-dispatcher", "action": "parallel-explore", "description": "Spawn Explore subagents with fresh contexts for broad codebase sweeps" },
+          { "moduleId": "tool-engine", "action": "edit + bash", "description": "Surgical diffs (Edit) to files; Bash for build/test/lint commands" },
+          { "moduleId": "wu2-compressor", "action": "compact-if-needed", "description": "At ~92% context: summarize old turns, free space for new work" },
+          { "moduleId": "streamgen", "action": "stream", "description": "Stream final answer to user; if no more tool calls, loop terminates naturally" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Session Persistence",
+        "description": "Save key findings to MEMORY.md, snapshot state for next session",
+        "steps": [
+          { "moduleId": "memory-system", "action": "save", "description": "Write important facts and decisions to MEMORY.md for cross-session recall", "isEntry": true },
+          { "moduleId": "h2a-queue", "action": "drain", "description": "Clear the interrupt queue; session ends" }
+        ]
+      }
+    ]
+  }
+}

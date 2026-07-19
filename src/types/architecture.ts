@@ -7,6 +7,10 @@ export type FrameworkPattern =
   | 'sop-pipeline'
   | 'component-based'
   | 'visual-dag'
+  | 'master-loop'
+  | 'hub-and-spoke'
+  | 'react-loop'
+  | 'layered'
 
 // ── Module Types ──
 export type ModuleType =

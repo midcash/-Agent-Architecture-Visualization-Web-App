@@ -92,6 +92,10 @@ export const frameworkColors: Record<string, string> = {
   metagpt: '#f59e0b',
   agno: '#ec4899',
   dify: '#6366f1',
+  'claude-code': '#d97706',
+  openclaw: '#dc2626',
+  hermes: '#8b5cf6',
+  'pi-agent': '#14b8a6',
 }
 
 // Module type → Lucide icon name

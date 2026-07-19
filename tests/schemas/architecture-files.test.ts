@@ -106,6 +106,7 @@ describe('Architecture Data Files — auto-discovery validation', () => {
       const validPatterns = [
         'state-graph', 'role-based', 'actor-model', 'handoff',
         'sop-pipeline', 'component-based', 'visual-dag',
+        'master-loop', 'hub-and-spoke', 'react-loop', 'layered',
       ]
       const framework = (data as Record<string, unknown>).framework as { pattern: string }
       expect(validPatterns).toContain(framework.pattern)
@@ -114,8 +115,8 @@ describe('Architecture Data Files — auto-discovery validation', () => {
 })
 
 describe('Frameworks registry consistency', () => {
-  it('has all 7 framework entries', () => {
-    expect(frameworks.length).toBe(7)
+  it('has all 11 framework entries', () => {
+    expect(frameworks.length).toBe(11)
   })
 
   it('each framework entry has a corresponding architecture file', () => {

@@ -1,0 +1,80 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "OpenClaw",
+    "version": "2025+",
+    "description": "Hub-and-spoke self-hosted agent platform — Gateway/Runtime split architecture. 40+ messaging channels, 75+ tools, Docker sandbox, layered memory (workspace → vector → knowledge graph), plugin SDK with 13 lifecycle hooks. Built in TypeScript monorepo.",
+    "url": "https://github.com/codextech/openclaw-handbook",
+    "pattern": "hub-and-spoke",
+    "category": "platform"
+  },
+  "modules": [
+    { "id": "gateway", "name": "Gateway Server", "type": "core", "description": "Central daemon — Express + WebSocket JSON-RPC, OpenAI-compatible HTTP API. Manages channel connections, routing, cron, browser control, node management, health probes." },
+    { "id": "agent-runtime", "name": "Agent Runtime", "type": "compute", "description": "AI agent brain — PI Embedded Runner with ReAct loop, model selection, tool execution, system prompt construction, sandboxing, skills, subagents, context compaction." },
+    { "id": "channel-hub", "name": "Channel Hub", "type": "routing", "description": "Unified message adapter for 40+ channels (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, LINE, IRC, QQ, Feishu, etc.). Each implements normalize/send/monitor/onboard." },
+    { "id": "auto-reply-pipeline", "name": "Auto-Reply Pipeline", "type": "routing", "description": "Message processing: dispatch → directives → commands → queue → delivery → approval. Routes inbound messages to correct agent based on 7-tier priority rules." },
+    { "id": "tool-registry", "name": "Tool Registry", "type": "tool", "description": "75+ tools: exec, browser (Playwright/CDP), web search, memory, message, cron, canvas, nodes, diffs, file ops. TypeScript type-safe tool definitions with parameter schemas." },
+    { "id": "sandbox", "name": "Docker Sandbox", "type": "external", "description": "Container-based execution isolation. Configurable modes: off/non-main/all. Cell Isolation for local node execution on Mac/Linux/Raspberry Pi." },
+    { "id": "memory-host", "name": "Memory Host SDK", "type": "storage", "description": "Layered memory: workspace files (MEMORY.md, USER.md, SOUL.md), SQLite facts.db, PGVector/LanceDB vector search, knowledge graphs (3K+ facts), semantic recall." },
+    { "id": "background-ctrl", "name": "Background Task Control", "type": "core", "description": "SQLite-backed durable task plane: cron scheduler, task registry, executor, audit, ownership tracking. Tasks survive restarts with retry and delivery guarantees." },
+    { "id": "hook-system", "name": "Hook Event Bus", "type": "routing", "description": "13 lifecycle hook points: before/after tool execution, before/after agent response, session lifecycle, error handling, shutdown. Plugin SDK for custom extensions." },
+    { "id": "plugin-sdk", "name": "Plugin SDK", "type": "tool", "description": "Type-safe extension API: tool plugins, provider plugins, channel plugins, MCP mediation. Auth profiles with failover chains. Hot-reload via openclaw.json (JSON5 + Zod validation)." },
+    { "id": "security-layer", "name": "Security Layer", "type": "routing", "description": "Multi-layer defense: exec approval workflow, tool allow/deny policies, SSRF protection, content sanitization, SecretRef credential management, timing-safe auth." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "channel-hub", "to": "gateway", "label": "inbound message", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "channel-adapter", "description": "Any messaging platform sends normalized event to Gateway" } },
+    { "id": "f2", "from": "gateway", "to": "auto-reply-pipeline", "label": "dispatch", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "routing", "description": "Gateway routes message through auto-reply pipeline with 7-tier priority matching" } },
+    { "id": "f3", "from": "auto-reply-pipeline", "to": "agent-runtime", "label": "invoke agent", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "agent-run", "description": "Pipeline dispatches to Agent Runtime: model selection → system prompt → ReAct loop" } },
+    { "id": "f4", "from": "agent-runtime", "to": "tool-registry", "label": "tool call", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-exec", "description": "Agent invokes tool; Registry resolves and executes with parameter validation" } },
+    { "id": "f5", "from": "agent-runtime", "to": "sandbox", "label": "isolated exec", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "sandbox", "description": "Shell commands and browser automation executed inside Docker container" } },
+    { "id": "f6", "from": "agent-runtime", "to": "memory-host", "label": "read/write memory", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "memory-io", "description": "Agent reads workspace files + vector search; writes facts and conversation summaries" } },
+    { "id": "f7", "from": "agent-runtime", "to": "hook-system", "label": "lifecycle events", "type": "event", "direction": "bidirectional", "metadata": { "protocol": "hooks", "description": "13 hook points fire at each lifecycle stage; plugins react and can modify behavior" } },
+    { "id": "f8", "from": "gateway", "to": "background-ctrl", "label": "schedule task", "type": "async", "direction": "bidirectional", "metadata": { "protocol": "cron", "description": "Gateway schedules cron jobs; Background Task Control executes and persists results" } },
+    { "id": "f9", "from": "background-ctrl", "to": "agent-runtime", "label": "trigger agent", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "cron-trigger", "description": "Scheduled task fires → spawns isolated agent session → delivers result back to channel" } },
+    { "id": "f10", "from": "agent-runtime", "to": "gateway", "label": "deliver response", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "response", "description": "Agent returns formatted response; Gateway delivers back through originating channel" } },
+    { "id": "f11", "from": "plugin-sdk", "to": "tool-registry", "label": "register tools", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "plugin-registration", "description": "Plugin SDK registers custom tools into Tool Registry at startup" } },
+    { "id": "f12", "from": "plugin-sdk", "to": "hook-system", "label": "register hooks", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "hook-registration", "description": "Plugins subscribe to lifecycle hooks via Plugin SDK" } },
+    { "id": "f13", "from": "security-layer", "to": "tool-registry", "label": "enforce policies", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "policy-enforcement", "description": "Security Layer checks tool allow/deny policies before Tool Registry executes" } },
+    { "id": "f14", "from": "security-layer", "to": "sandbox", "label": "harden isolation", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "sandbox-policy", "description": "Security policies control sandbox mode and isolation level" } },
+    { "id": "f15", "from": "hook-system", "to": "security-layer", "label": "audit events", "type": "async", "direction": "unidirectional", "metadata": { "protocol": "audit", "description": "Hook events flow to Security Layer for audit logging and anomaly detection" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Message Ingestion & Routing",
+        "description": "Inbound message from any channel → normalize → dispatch through auto-reply pipeline → route to correct agent",
+        "steps": [
+          { "moduleId": "channel-hub", "action": "receive", "trigger": "user message on any platform", "description": "Channel plugin normalizes platform-specific event into unified internal format", "isEntry": true },
+          { "moduleId": "gateway", "action": "authenticate", "description": "Gateway validates auth, applies rate limiting, resolves agent routing rules" },
+          { "moduleId": "auto-reply-pipeline", "action": "dispatch", "description": "7-tier priority matching: force → exact → prefix → regex → tags → default → fallback" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "Agent Execution (ReAct Loop)",
+        "description": "Agent Runtime executes ReAct loop: Think → Act → Observe → Repeat until response complete",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "agent-runtime", "action": "select-model", "trigger": "dispatched message", "description": "Select optimal LLM provider based on task: chat→fast, coding→premium, reasoning→reasoning model", "isEntry": true },
+          { "moduleId": "memory-host", "action": "recall", "description": "Load workspace files + vector search for relevant past conversations" },
+          { "moduleId": "agent-runtime", "action": "reason", "description": "Construct system prompt with identity files; model decides: respond or call tool" },
+          { "moduleId": "tool-registry", "action": "execute-tool", "description": "If tool call: invoke from 75+ tools (exec, browser, search, memory, etc.)" },
+          { "moduleId": "sandbox", "action": "isolate", "description": "If command exec: run inside Docker sandbox with Cell Isolation" },
+          { "moduleId": "hook-system", "action": "emit-events", "description": "Before/after each tool execution, hook events fire; plugins may modify behavior" },
+          { "moduleId": "agent-runtime", "action": "respond", "description": "Model produces final text response; loop terminates" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Response Delivery & Persistence",
+        "description": "Deliver agent response back through channel, save memory, update audit log",
+        "steps": [
+          { "moduleId": "gateway", "action": "deliver", "description": "Gateway delivers formatted response back through originating channel plugin", "isEntry": true },
+          { "moduleId": "memory-host", "action": "save", "description": "Summarize key insights; store facts in facts.db; update vector index" },
+          { "moduleId": "background-ctrl", "action": "audit", "description": "Background Task Control logs execution audit trail for debugging and compliance" }
+        ]
+      }
+    ]
+  }
+}

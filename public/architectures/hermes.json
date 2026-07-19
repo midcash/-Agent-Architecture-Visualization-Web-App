@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "framework": {
+    "name": "Hermes Agent",
+    "version": "0.13+",
+    "description": "ReAct-loop agent with self-learning skill system — auto-extracts reusable SKILL.md from completed tasks. 70+ tools, 6 terminal backends (Local/Docker/SSH/Daytona/Modal/Singularity), 18+ LLM providers, 20+ messaging channels. Built by Nous Research in Python.",
+    "url": "https://github.com/NousResearch/hermes-agent",
+    "pattern": "react-loop",
+    "category": "agent-framework"
+  },
+  "modules": [
+    { "id": "ai-agent-core", "name": "AIAgent Core", "type": "core", "description": "Synchronous agent loop (~12K LOC). Orchestrates: provider selection → prompt construction → tool dispatch → retry/fallback → compression → persistence. 4 API modes: chat_completions, codex_responses, anthropic_messages, auxiliary_client." },
+    { "id": "skill-extractor", "name": "Skill Extractor", "type": "compute", "description": "Auto-learning: after successful task completion, analyzes the execution path and saves as reusable SKILL.md. Zero human curation required. Compatible with agentskills.io standard." },
+    { "id": "tool-registry", "name": "Tool Registry", "type": "routing", "description": "Central registry: tools self-register at import time via registry.register(). 70+ tools across 28 toolsets: terminal, file ops, web search, browser (Browserbase), code sandbox, subagent delegation, MCP client." },
+    { "id": "terminal-backend", "name": "Terminal Backends", "type": "compute", "description": "6 execution backends: Local shell, Docker container, SSH remote, Daytona cloud, Modal serverless (sleep/wake to near-zero cost), Singularity container. Pluggable architecture." },
+    { "id": "memory-system", "name": "Memory System", "type": "storage", "description": "Three-layer: static files (MEMORY.md + USER.md, frozen at session start for prompt cache), SQLite FTS5 full-text search (auto-summarized after each session), Honcho user modeling (dialectical, understands motivations)." },
+    { "id": "prompt-builder", "name": "Prompt Builder", "type": "core", "description": "Tiered assembly: stable (cached) → context (session) → volatile (current turn). Anthropic cache breakpoints for prefix caching. Cache stability is 'sacred' — system prompt never changes mid-conversation." },
+    { "id": "context-compressor", "name": "Context Compressor", "type": "storage", "description": "Lossy summarization of middle conversation turns when context exceeds thresholds. Preserves session lineage (parent/child across compressions)." },
+    { "id": "provider-resolver", "name": "Provider Resolver", "type": "routing", "description": "Shared runtime resolver: maps (provider, model) → (api_mode, api_key, base_url). 18+ providers: OpenAI, Anthropic, OpenRouter, Bedrock, DeepSeek, Gemini, GitHub Copilot, etc. OAuth + credential pools." },
+    { "id": "gateway-server", "name": "Gateway Server", "type": "external", "description": "Long-running process with ~20 platform adapters: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email, SMS, DingTalk, WeCom, Feishu, QQ, BlueBubbles, HomeAssistant." },
+    { "id": "plugin-system", "name": "Plugin System", "type": "routing", "description": "Three discovery sources: ~/.hermes/plugins/, .hermes/plugins/, pip entry points. Two specialized plugin types: memory providers and context engines (single-select, one active at a time)." }
+  ],
+  "dataFlows": [
+    { "id": "f1", "from": "gateway-server", "to": "ai-agent-core", "label": "inbound message", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "channel-adapt", "description": "Any of 20 messaging platforms delivers normalized event to AIAgent Core" } },
+    { "id": "f2", "from": "ai-agent-core", "to": "provider-resolver", "label": "resolve model", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "provider-resolve", "description": "Core queries Provider Resolver for (provider, model) → (api_mode, key, base_url)" } },
+    { "id": "f3", "from": "ai-agent-core", "to": "prompt-builder", "label": "build prompt", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "prompt-construction", "description": "Core sends context; Prompt Builder assembles stable + context + volatile blocks" } },
+    { "id": "f4", "from": "ai-agent-core", "to": "memory-system", "label": "recall context", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "memory-io", "description": "Load MEMORY.md/USER.md at session start; FTS5 search for historical context mid-session" } },
+    { "id": "f5", "from": "ai-agent-core", "to": "tool-registry", "label": "dispatch tool", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "tool-call", "description": "Agent invokes tool; Registry resolves to appropriate handler from 70+ registered tools" } },
+    { "id": "f6", "from": "tool-registry", "to": "terminal-backend", "label": "execute command", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "terminal-exec", "description": "Terminal tool routes to selected backend (Local/Docker/SSH/Daytona/Modal/Singularity)" } },
+    { "id": "f7", "from": "ai-agent-core", "to": "skill-extractor", "label": "extract skill", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "skill-learning", "description": "After successful task: analyze path → save as SKILL.md → zero human curation" } },
+    { "id": "f8", "from": "skill-extractor", "to": "memory-system", "label": "store skill", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "skill-storage", "description": "Extracted SKILL.md stored in filesystem; available for future sessions" } },
+    { "id": "f9", "from": "ai-agent-core", "to": "context-compressor", "label": "compress context", "type": "sync", "direction": "bidirectional", "metadata": { "protocol": "compression", "description": "When context exceeds threshold: lossy summarization of middle turns; preserves lineage" } },
+    { "id": "f10", "from": "plugin-system", "to": "ai-agent-core", "label": "inject plugin", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "plugin-load", "description": "Plugin System loads user/project/pip plugins; injects custom tools and hooks into Core" } },
+    { "id": "f11", "from": "ai-agent-core", "to": "gateway-server", "label": "deliver response", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "response", "description": "Agent returns formatted response through originating channel adapter" } },
+    { "id": "f12", "from": "prompt-builder", "to": "memory-system", "label": "cache stable blocks", "type": "sync", "direction": "unidirectional", "metadata": { "protocol": "cache", "description": "Stable prompt blocks frozen at session start for Anthropic prefix caching optimization" } },
+    { "id": "f13", "from": "provider-resolver", "to": "ai-agent-core", "label": "failover", "type": "event", "direction": "unidirectional", "metadata": { "protocol": "failover", "description": "If primary provider fails, Resolver triggers failover chain to next available provider" } }
+  ],
+  "executionFlow": {
+    "phases": [
+      {
+        "id": "phase-1",
+        "name": "Session Initialization",
+        "description": "Load identity, resolve provider, build initial prompt with cached stable blocks",
+        "steps": [
+          { "moduleId": "gateway-server", "action": "receive", "trigger": "user message from any channel", "description": "Channel adapter normalizes platform event into unified format", "isEntry": true },
+          { "moduleId": "memory-system", "action": "load", "description": "Load MEMORY.md (~800 tokens) + USER.md (~500 tokens); frozen snapshot for cache stability" },
+          { "moduleId": "provider-resolver", "action": "resolve", "description": "Map (provider, model) tuple to (api_mode, key, base_url); check OAuth + credential pools" },
+          { "moduleId": "prompt-builder", "action": "assemble", "description": "Tiered assembly: inject stable blocks into Anthropic cache breakpoints for prefix caching" }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "name": "ReAct Execution Loop",
+        "description": "Core agent loop: Think → Act → Observe → Repeat. Skills auto-extracted from success paths.",
+        "repeat": "loop",
+        "steps": [
+          { "moduleId": "ai-agent-core", "action": "think", "trigger": "prompt assembled + context loaded", "description": "Model reasons about task; decides: respond directly or invoke tool(s)", "isEntry": true },
+          { "moduleId": "tool-registry", "action": "resolve-tool", "description": "If tool call: Registry matches tool name to registered handler with parameter validation" },
+          { "moduleId": "terminal-backend", "action": "execute", "description": "If terminal tool: route to selected backend (Docker/SSH/Daytona/Modal — serverless sleep/wake)" },
+          { "moduleId": "context-compressor", "action": "compress-if-needed", "description": "If context > threshold: lossy summarization of middle turns; preserve session lineage" },
+          { "moduleId": "ai-agent-core", "action": "observe", "description": "Tool result feeds back into context; model decides: more tools or final answer" },
+          { "moduleId": "skill-extractor", "action": "learn", "description": "After task: analyze success path → auto-extract SKILL.md → store for future reuse" }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "name": "Session Finalization",
+        "description": "Deliver response, persist memory summary, update FTS5 index",
+        "steps": [
+          { "moduleId": "ai-agent-core", "action": "finalize", "description": "Agent produces final text response; loop terminates", "isEntry": true },
+          { "moduleId": "gateway-server", "action": "deliver", "description": "Response delivered through originating channel adapter to user" },
+          { "moduleId": "memory-system", "action": "persist", "description": "Key content auto-summarized; stored in SQLite FTS5 for future semantic search" }
+        ]
+      }
+    ]
+  }
+}

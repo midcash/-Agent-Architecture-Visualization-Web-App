@@ -9,6 +9,10 @@ const frameworkPatternSchema = z.enum([
   'sop-pipeline',
   'component-based',
   'visual-dag',
+  'master-loop',
+  'hub-and-spoke',
+  'react-loop',
+  'layered',
 ])
 
 const moduleTypeSchema = z.enum([
