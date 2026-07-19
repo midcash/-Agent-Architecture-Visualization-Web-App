@@ -10,7 +10,8 @@ import FileDropZone from './components/import-export/FileDropZone'
 import ExportButton from './components/import-export/ExportButton'
 import ValidationErrors from './components/import-export/ValidationErrors'
 import type { ValidationError as ValidationErrorType } from './types/architecture'
-import { Columns2, Eye } from 'lucide-react'
+import { useDarkMode } from './hooks/useDarkMode'
+import { Columns2, Eye, Moon, Sun } from 'lucide-react'
 
 type ViewMode = 'single' | 'compare'
 
@@ -26,6 +27,7 @@ function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [importErrors, setImportErrors] = useState<ValidationErrorType[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('single')
+  const [isDark, toggleDark] = useDarkMode()
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-slate-950">
@@ -125,7 +127,14 @@ function AppShell() {
 
           {viewMode === 'single' && <ArchitectureInfo />}
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={toggleDark}
+              className="flex size-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+            </button>
             <ExportButton />
           </div>
         </header>
